@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  QUALITY
+  STORE
+  PURCHASE
+  PRODUCTION
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String
+  role      Role     @default(STORE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations for Audit
+  auditLogs      AuditLog[]
+  createdDocs    Document[]    @relation("CreatedDocs")
+  reviewedDocs   Document[]    @relation("ReviewedDocs")
+  approvedDocs   Document[]    @relation("ApprovedDocs")
+  iqcInspections IqcInspection[]
+  ncrRecords     NcrRecord[]
+}
+
+enum DocStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  OBSOLETE
+}
+
+model Document {
+  id      String    @id @default(cuid())
+  title   String
+  version String // e.g., Rev A, Rev B
+  content String    @db.Text
+  status  DocStatus @default(DRAFT)
+
+  authorId   String
+  author     User   @relation("CreatedDocs", fields: [authorId], references: [id])
+
+  reviewerId String?
+  reviewer   User?  @relation("ReviewedDocs", fields: [reviewerId], references: [id])
+
+  approverId String?
+  approver   User?  @relation("ApprovedDocs", fields: [approverId], references: [id])
+
+  effectiveDate DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Supplier {
+  id                String   @id @default(cuid())
+  name              String
+  code              String   @unique
+  isApproved        Boolean  @default(false)
+  performanceRating Float    @default(0.0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  grns Grn[]
+}
+
+model Component {
+  id            String   @id @default(cuid())
+  partNumber    String   @unique
+  description   String
+  category      String
+  mslLevel      Int      @default(1)
+  shelfLifeDays Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  reels    Reel[]
+  grnItems GrnItem[]
+}
+
+enum ReelStatus {
+  QUARANTINE
+  ACCEPTED
+  REJECTED
+  ISSUED
+  CONSUMED
+  SCRAPPED
+}
+
+model Reel {
+  id          String     @id @default(cuid())
+  componentId String
+  component   Component  @relation(fields: [componentId], references: [id])
+  grnId       String
+  grn         Grn        @relation(fields: [grnId], references: [id])
+  supplierLot String
+  quantity    Int
+  location    String?
+  status      ReelStatus @default(QUARANTINE)
+  expiryDate  DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  auditLogs  AuditLog[]
+  ncrRecords NcrRecord[]
+}
+
+model Grn {
+  id           String   @id @default(cuid())
+  grnNumber    String   @unique
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id])
+  receivedDate DateTime @default(now())
+  status       String   @default("PENDING_IQC")
+
+  items GrnItem[]
+  reels Reel[]
+}
+
+model GrnItem {
+  id          String    @id @default(cuid())
+  grnId       String
+  grn         Grn       @relation(fields: [grnId], references: [id])
+  componentId String
+  component   Component @relation(fields: [componentId], references: [id])
+  declaredQty Int
+
+  iqc IqcInspection?
+}
+
+model IqcInspection {
+  id          String  @id @default(cuid())
+  grnItemId   String  @unique
+  grnItem     GrnItem @relation(fields: [grnItemId], references: [id])
+  inspectorId String
+  inspector   User    @relation(fields: [inspectorId], references: [id])
+  status      String // PASS, FAIL
+  measurements Json?
+  remarks     String?
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String // CREATE, UPDATE, DELETE, MOVE
+  entityType String // e.g., REEL, DOCUMENT, GRN
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  timestamp  DateTime @default(now())
+
+  reelId String?
+  reel   Reel?  @relation(fields: [reelId], references: [id])
+}
+
+model NcrRecord {
+  id          String @id @default(cuid())
+  ncrNumber   String @unique
+  reelId      String
+  reel        Reel   @relation(fields: [reelId], references: [id])
+  raisedById  String
+  raisedBy    User   @relation(fields: [raisedById], references: [id])
+  description String
+  rootCause   String?
+  capa        String?
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
