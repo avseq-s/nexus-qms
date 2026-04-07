@@ -306,7 +306,7 @@ export default function PurchasePage() {
               <UploadCloud size={20} /> Smart Upload PO
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-              Upload your supplier Purchase Order (PDF). The system will automatically use OCR to extract the PO Number, Supplier, and expected components for the Store team's GRN process.
+              Upload your supplier Purchase Order (PDF). The system will automatically use OCR to extract the PO Number, Supplier, and expected components for the Store team&apos;s GRN process.
             </p>
 
             {/* Single Large Upload Zone */}

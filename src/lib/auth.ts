@@ -1,6 +1,6 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -16,21 +16,40 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
+        // Dev fallback — works without a database connection
+        if (process.env.NODE_ENV !== 'production') {
+          const DEV_USERS: Record<string, { name: string; role: Role; password: string }> = {
+            'admin@nexusqms.com':    { name: 'Admin User',       role: 'ADMIN',      password: 'Admin@123' },
+            'quality@nexusqms.com':  { name: 'Quality Inspector', role: 'QUALITY',    password: 'Quality@123' },
+            'store@nexusqms.com':    { name: 'Store Manager',     role: 'STORE',      password: 'Store@123' },
+            'purchase@nexusqms.com': { name: 'Purchase Team',     role: 'PURCHASE',   password: 'Purchase@123' },
+          };
+          const dev = DEV_USERS[credentials.email];
+          if (dev && credentials.password === dev.password) {
+            return { id: credentials.email, email: credentials.email, name: dev.name, role: dev.role };
+          }
+        }
 
-        if (!user) return null;
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email },
+          });
 
-        const isValid = await bcrypt.compare(credentials.password, user.password);
-        if (!isValid) return null;
+          if (!user) return null;
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        };
+          const isValid = await bcrypt.compare(credentials.password, user.password);
+          if (!isValid) return null;
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          };
+        } catch {
+          // Database unreachable — only dev fallback applies
+          return null;
+        }
       },
     }),
   ],
@@ -45,7 +64,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as string;
+        session.user.role = token.role as Role;
       }
       return session;
     },

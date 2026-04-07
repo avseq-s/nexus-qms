@@ -13,7 +13,8 @@ import {
   XOctagon,
   DownloadCloud,
   Camera,
-  Layers
+  Layers,
+  Upload
 } from 'lucide-react';
 
 // Mock data matching the Prisma schema for Reel Traceability
@@ -66,11 +67,15 @@ export default function InventoryPage() {
   });
 
   React.useEffect(() => {
-    // For testing: Overwrite with fresh dummy data to show Multi-EMS and Zero-Error features
-    setReels(MOCK_REELS);
-    localStorage.setItem('QMS_REELS', JSON.stringify(MOCK_REELS));
+    const saved = localStorage.getItem('QMS_REELS');
+    if (saved) {
+      setReels(JSON.parse(saved));
+    } else {
+      setReels(MOCK_REELS);
+      localStorage.setItem('QMS_REELS', JSON.stringify(MOCK_REELS));
+    }
     
-    // Also clear pending IQC since it's now integrated into REELS as QUARANTINE
+    // Clear pending IQC since it's now integrated into REELS as QUARANTINE
     localStorage.removeItem('QMS_PENDING_IQC');
   }, []);
 
@@ -250,6 +255,76 @@ export default function InventoryPage() {
     }, 600);
   }
 
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleCsvImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const rows = text.split('\n').filter(r => r.trim() !== '');
+      if (rows.length < 2) return alert('Invalid CSV: Need standard headers and at least one row');
+      
+      const newItems: any[] = [];
+      for (let i = 1; i < rows.length; i++) {
+        // Expected: Reel ID, Part Number, Qty, Supplier, Location
+        const cols = rows[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+        if (cols.length >= 3 && cols[0] && cols[1] && cols[2]) {
+          newItems.push({
+            id: cols[0].toUpperCase(),
+            partNumber: cols[1],
+            qty: Number(cols[2]) || 0,
+            supplier: cols[3] || 'Legacy Opening Stock',
+            location: cols[4] || 'Store Main',
+            status: 'ACCEPTED',
+            lot: 'BULK-IMPORT',
+            history: [{
+              date: new Date().toISOString().split('T')[0],
+              stage: 'Opening Stock',
+              action: 'Bulk Data Migration Upload',
+              user: 'System.Admin'
+            }]
+          });
+        }
+      }
+
+      if (newItems.length > 0) {
+        // Find conflicts
+        const existingIds = new Set(reels.map(r => r.id.toUpperCase()));
+        const uniqueItems = newItems.filter(item => !existingIds.has(item.id));
+        
+        if (uniqueItems.length === 0) {
+          alert("All items in CSV already exist in the system (Duplicate IDs).");
+        } else {
+          const newAllReels = [...uniqueItems, ...reels];
+          setReels(newAllReels);
+          localStorage.setItem('QMS_REELS', JSON.stringify(newAllReels));
+          alert(`Successfully imported ${uniqueItems.length} stock items! (${newItems.length - uniqueItems.length} duplicates skipped)`);
+        }
+      } else {
+        alert("No valid rows found to import. Required minimum columns: Reel ID, Part Number, Qty.");
+      }
+      
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadInventoryTemplate = () => {
+    const csvContent = "Reel ID,Part Number,Quantity,Supplier,Location\nQR-RES-001,RES-10K-0603,5000,DigiKey,Store Main\nQR-CAP-002,CAP-0.1uF-0402,10000,Mouser,Rack A1\nQR-IC-003,IC-STM32F405,500,Avnet,IQC Holding";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "inventory_import_template.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="animate-fade-in stagger-1">
       <div className="page-header">
@@ -258,6 +333,15 @@ export default function InventoryPage() {
           <p className="text-secondary">Store team material receiving, counting, and inventory tracking (ISO 9001)</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
+          <input type="file" accept=".csv" hidden ref={fileInputRef} onChange={handleCsvImport} />
+          <button className="btn btn-secondary" onClick={downloadInventoryTemplate}>
+            <DownloadCloud size={16} />
+            Template
+          </button>
+          <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>
+            <Upload size={16} />
+            Bulk Upload (.csv)
+          </button>
           <button className="btn btn-secondary" onClick={() => setShowOpeningStockModal(true)}>
             <Layers size={16} />
             Add Opening Stock
@@ -298,12 +382,11 @@ export default function InventoryPage() {
                 <th>Meters / Qty</th>
                 <th>Location</th>
                 <th>Status</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {reels.filter(r => r.id.includes(search) || r.partNumber.includes(search)).map((reel) => (
-                <tr key={reel.id}>
+                <tr key={reel.id} className="hover-row" style={{ cursor: 'pointer' }} onClick={() => setSelectedHistoryReel(reel)}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <QrCode size={16} color="var(--accent-primary)" />
@@ -318,7 +401,7 @@ export default function InventoryPage() {
                   <td>{reel.qty.toLocaleString()} pcs</td>
                   <td>
                     {editingLocation === reel.id ? (
-                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                         <input 
                           className="input-field" 
                           autoFocus
@@ -334,7 +417,7 @@ export default function InventoryPage() {
                     ) : (
                       <div 
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px', background: reel.location.includes('IQC') ? 'rgba(245, 158, 11, 0.1)' : 'transparent', color: reel.location.includes('IQC') ? 'var(--warning)' : 'var(--text-primary)', border: '1px dashed transparent', transition: 'border 0.2s' }}
-                        onClick={() => { setEditingLocation(reel.id); setTempLocation(reel.location); }}
+                        onClick={(e) => { e.stopPropagation(); setEditingLocation(reel.id); setTempLocation(reel.location); }}
                         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-focus)'}
                         onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
                         title="Click to assign Store Putaway Location"
@@ -354,12 +437,6 @@ export default function InventoryPage() {
                     }`}>
                       {reel.status === 'AT_EMS' ? 'AT VENDOR' : reel.status}
                     </span>
-                  </td>
-                  <td>
-                    <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setSelectedHistoryReel(reel)}>
-                      <ArrowRightLeft size={14} />
-                      History
-                    </button>
                   </td>
                 </tr>
               ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building2, 
   Search, 
@@ -9,7 +9,12 @@ import {
   AlertTriangle,
   XOctagon,
   Award,
-  Filter
+  Filter,
+  FileText,
+  Calendar,
+  Box,
+  Upload,
+  DownloadCloud
 } from 'lucide-react';
 
 const INITIAL_MOCK_SUPPLIERS = [
@@ -23,6 +28,93 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState(INITIAL_MOCK_SUPPLIERS);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [selectedSupplier, setSelectedSupplier] = useState<any>(null);
+  const [selectedShipment, setSelectedShipment] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCsvImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const rows = text.split('\n').filter(r => r.trim() !== '');
+      if (rows.length < 2) return alert('Invalid CSV: Need standard headers and at least one row');
+      
+      const newSuppliers: any[] = [];
+      for (let i = 1; i < rows.length; i++) {
+        // Simple comma split handling quotes is complex, sticking to simple format
+        // Expected: Name, Contact, Email, GSTIN, ISO (true/false)
+        const cols = rows[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+        if (cols.length >= 3 && cols[0]) {
+          const isIso = cols[4] ? cols[4].toLowerCase() === 'true' || cols[4].toLowerCase() === 'yes' || cols[4] === '1' : false;
+          newSuppliers.push({
+            id: `SUP-${Math.floor(100 + Math.random() * 900)}${i}`,
+            name: cols[0],
+            contact: cols[1] || 'N/A',
+            email: cols[2] || 'N/A',
+            gstin: cols[3] || 'N/A',
+            iso: isIso,
+            status: isIso ? 'Approved' : 'Probation'
+          });
+        }
+      }
+
+      if (newSuppliers.length > 0) {
+        const updated = [...newSuppliers, ...suppliers];
+        setSuppliers(updated);
+        localStorage.setItem('QMS_SUPPLIERS', JSON.stringify(updated));
+        alert(`Successfully imported ${newSuppliers.length} vendors to ASL!`);
+      } else {
+        alert("No valid rows found to import. Make sure your CSV has Name, Contact, Email, GST, and ISO columns.");
+      }
+      
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadSupplierTemplate = () => {
+    const csvContent = "Name,Contact,Email,GSTIN,ISO Certified (True/False)\nAcme Corp,John Doe,john@acme.com,12ABCDE3456F7Z8,True\nTechSupplies Inc,,info@techsupplies.com,,False";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "supplier_import_template.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const getHistory = (supId: string) => {
+    const seed = supId.charCodeAt(supId.length - 1);
+    const count = (seed % 3) + 1; 
+    const shipments = [
+      { 
+        id: 'GRN-2026-081', invoice: 'INV-A1099', date: '2026-03-22', status: 'PASS',
+        components: [
+          { part: '10K Ohm 0603 Resistor', qty: 5000, lotId: 'LOT-26A-0012', inspector: 'K. Lee', status: 'PASS', defect: 'None', measurement: '9.98k ~ 10.02k Ohm' },
+          { part: '0.1uF Ceramic Capacitor', qty: 2000, lotId: 'LOT-26A-0045', inspector: 'K. Lee', status: 'PASS', defect: 'None', measurement: '0.098uF ~ 0.101uF' }
+        ]
+      },
+      { 
+        id: 'GRN-2026-075', invoice: 'INV-B4402', date: '2026-03-15', status: 'PASS',
+        components: [
+          { part: 'STM32F405 Microcontroller', qty: 500, lotId: 'LOT-26B-0089', inspector: 'M. Chen', status: 'PASS', defect: 'None', measurement: 'Visual Pass' }
+        ]
+      },
+      { 
+        id: 'GRN-2026-060', invoice: 'INV-C119', date: '2026-02-28', status: 'FAIL',
+        components: [
+          { part: 'USB-C Connector', qty: 1000, lotId: 'LOT-26C-0112', inspector: 'S. Smith', status: 'FAIL', defect: 'Bent Pins', measurement: 'Visual Fail' },
+          { part: '22uH Power Inductor', qty: 3000, lotId: 'LOT-25D-0992', inspector: 'S. Smith', status: 'PASS', defect: 'None', measurement: '21.5uH ~ 22.1uH' }
+        ]
+      }
+    ];
+    return shipments.slice(0, count);
+  };
   
   const [formData, setFormData] = useState({
     name: '',
@@ -70,6 +162,15 @@ export default function SuppliersPage() {
           <p className="text-secondary">Official ISO 9001 Vendor Master & Compliance Directory</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
+          <input type="file" accept=".csv" hidden ref={fileInputRef} onChange={handleCsvImport} />
+          <button className="btn btn-secondary" onClick={downloadSupplierTemplate}>
+            <DownloadCloud size={16} />
+            Template
+          </button>
+          <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>
+            <Upload size={16} />
+            Bulk Import CSV
+          </button>
           <button className="btn btn-primary" onClick={() => setShowModal(true)}>
             <Plus size={16} />
             Register New Vendor
@@ -129,7 +230,7 @@ export default function SuppliersPage() {
             </thead>
             <tbody>
               {suppliers.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.gstin.toLowerCase().includes(search.toLowerCase())).map((sup) => (
-                <tr key={sup.id} className="hover-row">
+                <tr key={sup.id} className="hover-row" onClick={() => setSelectedSupplier(sup)} style={{ cursor: 'pointer' }}>
                   <td style={{ color: 'var(--text-muted)' }}>{sup.id}</td>
                   <td style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -166,6 +267,86 @@ export default function SuppliersPage() {
           </table>
         </div>
       </div>
+
+      {selectedSupplier && (
+        <div 
+          onClick={() => setSelectedSupplier(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+            zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="glass-panel animate-fade-in" 
+            style={{ padding: '2.5rem', width: '800px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--accent-primary)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Building2 size={24} color="var(--accent-primary)" /> {selectedSupplier.name}
+                </h2>
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', gap: '1rem' }}>
+                  <span>ID: {selectedSupplier.id}</span>
+                  <span>|</span>
+                  <span>Contact: {selectedSupplier.contact} ({selectedSupplier.email})</span>
+                </div>
+              </div>
+              <span className={`badge ${selectedSupplier.status === 'Approved' ? 'badge-success' : selectedSupplier.status === 'Probation' ? 'badge-warning' : 'badge-danger'}`}>
+                {selectedSupplier.status}
+              </span>
+            </div>
+
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+               <FileText size={18} /> Supply & QC History
+            </h3>
+            
+            <div className="table-container" style={{ marginBottom: '2rem' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date Received</th>
+                    <th>GRN / Invoice No.</th>
+                    <th>Total Components</th>
+                    <th>Overall Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {getHistory(selectedSupplier.id).map((shipment, i) => (
+                    <tr key={i} className="hover-row" style={{ cursor: 'pointer' }} onClick={() => setSelectedShipment(shipment)}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
+                           <Calendar size={14} /> {shipment.date}
+                        </div>
+                      </td>
+                      <td style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
+                        <div>{shipment.id}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>{shipment.invoice}</div>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{shipment.components.length} Items</td>
+                      <td>
+                        {shipment.status === 'PASS' ? (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600 }}>
+                            <CheckCircle size={14} /> PASSED
+                          </span>
+                        ) : (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600 }}>
+                            <XOctagon size={14} /> FAILED
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setSelectedSupplier(null)}>Close History Viewer</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div 
@@ -243,6 +424,82 @@ export default function SuppliersPage() {
               <button className="btn btn-primary" disabled={!formData.name || !formData.contact || !formData.email} onClick={handleRegister}>
                 <CheckCircle size={16} /> Register Vendor to ASL
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedShipment && (
+        <div 
+          onClick={() => setSelectedShipment(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)',
+            zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="glass-panel animate-fade-in" 
+            style={{ padding: '2.5rem', width: '900px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--accent-primary)', position: 'relative' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '1rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.5rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+                  Shipment Details: <span style={{ color: 'var(--accent-primary)' }}>{selectedShipment.id}</span>
+                </h2>
+                <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  <span><strong style={{ color: 'var(--text-primary)' }}>Invoice:</strong> {selectedShipment.invoice}</span>
+                  <span><strong style={{ color: 'var(--text-primary)' }}>Date:</strong> {selectedShipment.date}</span>
+                </div>
+              </div>
+              <span className={`badge ${selectedShipment.status === 'PASS' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '1rem', padding: '0.4rem 1rem' }}>
+                {selectedShipment.status === 'PASS' ? 'SHIPMENT PASSED' : 'HAS REJECTIONS'}
+              </span>
+            </div>
+            
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--text-secondary)' }}>Received Components</h3>
+            <div className="table-container" style={{ marginBottom: '2rem' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Lot Name</th>
+                    <th>Component</th>
+                    <th>Qty</th>
+                    <th>Inspector</th>
+                    <th>Measurements</th>
+                    <th>QC Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedShipment.components.map((comp: any, idx: number) => (
+                    <tr key={idx}>
+                      <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>{comp.lotId}</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                           <Box size={14} color="var(--text-muted)" /> {comp.part}
+                        </div>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{comp.qty.toLocaleString()}</td>
+                      <td style={{ fontSize: '0.85rem' }}>{comp.inspector}</td>
+                      <td>
+                         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{comp.measurement}</div>
+                         {comp.status === 'FAIL' && <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600 }}>Defect: {comp.defect}</div>}
+                      </td>
+                      <td>
+                        {comp.status === 'PASS' ? (
+                          <span style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600 }}>PASS</span>
+                        ) : (
+                          <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 600 }}>REJECT</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setSelectedShipment(null)}>Close Details</button>
             </div>
           </div>
         </div>

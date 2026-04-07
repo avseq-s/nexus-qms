@@ -66,13 +66,22 @@ export default function ItemMasterPage() {
     setActiveRequest(req);
     if (req) {
       let prefix = 'PRT-';
-      if (req.description.toLowerCase().includes('resistor')) prefix = 'RES-';
-      if (req.description.toLowerCase().includes('capacitor')) prefix = 'CAP-';
-      if (req.description.toLowerCase().includes('ic') || req.description.toLowerCase().includes('micro')) prefix = 'IC-';
+      let predictedCategory = 'Passive';
+      if (req.description.toLowerCase().includes('resistor') || req.description.toLowerCase().includes('capacitor')) {
+        prefix = req.description.toLowerCase().includes('resistor') ? 'RES-' : 'CAP-';
+        predictedCategory = 'Passive';
+      }
+      if (req.description.toLowerCase().includes('ic') || req.description.toLowerCase().includes('micro')) {
+        prefix = 'IC-';
+        predictedCategory = 'IC';
+      }
+      if (req.description.toLowerCase().includes('board') || req.description.toLowerCase().includes('pcb')) {
+         predictedCategory = 'PCB/Bare Board';
+      }
 
       setFormData({
         id: prefix,
-        category: 'Uncategorized',
+        category: predictedCategory,
         description: req.description,
         hsn: '',
         uom: 'pcs'
