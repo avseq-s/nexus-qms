@@ -1,21 +1,46 @@
+# =============================================================================
+# Nexus QMS — Docker Compose
+#
+# Starts two services:
+#   db  — MongoDB 7 (replaces the previous PostgreSQL setup)
+#   app — Next.js production build (served via standalone output)
+#
+# Usage:
+#   cp .env.example .env          # set your secrets
+#   docker compose up --build -d  # build and start in background
+#   docker compose logs -f app    # tail application logs
+#
+# Environment variables are read from a .env file in this directory.
+# All variables have safe defaults so `docker compose up` works out of the box
+# for local development without a .env file.
+# =============================================================================
+
 services:
+
+  # ---------------------------------------------------------------------------
+  # MongoDB — primary data store
+  # ---------------------------------------------------------------------------
   db:
-    image: postgres:16-alpine
+    image: mongo:7        # Pin to major version to avoid unexpected upgrades
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-qms_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qms_password}
-      POSTGRES_DB: ${POSTGRES_DB:-qms_db}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-qms_user}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-qms_password}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-qms_db}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongo_data:/data/db   # Persist data across container restarts
     ports:
-      - "5432:5432"
+      - "27017:27017"          # Expose only for local dev tools (e.g. MongoDB Compass)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-qms_user} -d ${POSTGRES_DB:-qms_db}"]
+      # mongosh ping ensures the server is fully ready before the app starts
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  # ---------------------------------------------------------------------------
+  # Next.js App — production build served in standalone mode
+  # ---------------------------------------------------------------------------
   app:
     build:
       context: .
@@ -24,12 +49,17 @@ services:
     ports:
       - "${PORT:-3000}:3000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-qms_user}:${POSTGRES_PASSWORD:-qms_password}@db:5432/${POSTGRES_DB:-qms_db}
+      # Full MongoDB connection string including auth source
+      DATABASE_URL: mongodb://${MONGO_USER:-qms_user}:${MONGO_PASSWORD:-qms_password}@db:27017/${MONGO_DB:-qms_db}?authSource=admin
+      # Must match the public URL of the app (used by NextAuth for callbacks)
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      # Random secret for signing NextAuth session tokens — change in production!
+      # Generate: openssl rand -base64 32
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-this-secret-in-production-min-32-chars}
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy  # Wait for MongoDB to be ready before starting
 
+# Named volume — data survives `docker compose down` (use `down -v` to wipe)
 volumes:
-  postgres_data:
+  mongo_data:

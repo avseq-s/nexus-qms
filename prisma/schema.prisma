@@ -1,179 +1,249 @@
+// =============================================================================
+// Nexus QMS — Prisma Schema
+// Database: MongoDB (via Prisma ODM)
+//
+// All models use MongoDB ObjectId as the primary key (@db.ObjectId).
+// Relations are stored as referenced ObjectId fields — Prisma resolves them
+// at query time using the `@relation` directive (no SQL JOIN equivalent).
+//
+// MongoDB does NOT use migrations. Use `prisma db push` to sync this schema
+// to your database, and `prisma db seed` to populate initial data.
+// =============================================================================
+
 generator client {
+  // Generates the Prisma Client used throughout the Next.js app
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Switched from PostgreSQL to MongoDB for free-tier cloud hosting (MongoDB Atlas)
+  provider = "mongodb"
+  url      = env("DATABASE_URL") // Set in .env.local — see .env.example
 }
 
+// =============================================================================
+// ENUMS
+// MongoDB stores enums as plain strings in the collection.
+// =============================================================================
+
+// Defines what each user is allowed to see and do in the system
 enum Role {
-  ADMIN
-  QUALITY
-  STORE
-  PURCHASE
-  PRODUCTION
+  ADMIN      // Full access — manage users, system config
+  QUALITY    // Run IQC inspections, raise NCRs, approve documents
+  STORE      // Receive GRNs, manage inventory reels
+  PURCHASE   // Manage suppliers and purchase orders
+  PRODUCTION // View inventory and issue reels to production
 }
 
+// Tracks the approval lifecycle of a controlled document
+enum DocStatus {
+  DRAFT     // Being authored — not yet reviewed
+  IN_REVIEW // Submitted for review — locked for editing
+  APPROVED  // Signed off — effective and in use
+  OBSOLETE  // Superseded by a newer revision
+}
+
+// Tracks the physical/inspection state of a component reel in the store
+enum ReelStatus {
+  QUARANTINE // Newly received — awaiting IQC inspection
+  ACCEPTED   // IQC passed — cleared for use
+  REJECTED   // IQC failed — must be returned or scrapped
+  ISSUED     // Picked from store and issued to production
+  CONSUMED   // Fully used up in production
+  SCRAPPED   // Disposed of (damaged, expired, or failed)
+}
+
+// =============================================================================
+// MODELS
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// User — system account with role-based access
+// -----------------------------------------------------------------------------
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String
+  // MongoDB ObjectId — auto-generated 24-char hex string
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique  // Used as the login identifier
+  name      String?           // Display name (optional)
+  password  String            // bcrypt hash — never stored in plaintext
   role      Role     @default(STORE)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations for Audit
-  auditLogs      AuditLog[]
-  createdDocs    Document[]    @relation("CreatedDocs")
-  reviewedDocs   Document[]    @relation("ReviewedDocs")
-  approvedDocs   Document[]    @relation("ApprovedDocs")
-  iqcInspections IqcInspection[]
-  ncrRecords     NcrRecord[]
+  // Back-relations — Prisma uses these to resolve reverse lookups
+  auditLogs      AuditLog[]       // All actions this user performed
+  createdDocs    Document[]       @relation("CreatedDocs")   // Documents authored
+  reviewedDocs   Document[]       @relation("ReviewedDocs")  // Documents reviewed
+  approvedDocs   Document[]       @relation("ApprovedDocs")  // Documents approved
+  iqcInspections IqcInspection[]  // IQC inspections conducted
+  ncrRecords     NcrRecord[]      // NCRs raised by this user
 }
 
-enum DocStatus {
-  DRAFT
-  IN_REVIEW
-  APPROVED
-  OBSOLETE
-}
-
+// -----------------------------------------------------------------------------
+// Document — ISO 9001 controlled document (SOP, work instruction, policy, etc.)
+// -----------------------------------------------------------------------------
 model Document {
-  id      String    @id @default(cuid())
-  title   String
-  version String // e.g., Rev A, Rev B
-  content String    @db.Text
+  id      String    @id @default(auto()) @map("_id") @db.ObjectId
+  title   String                    // e.g., "Incoming Inspection Procedure"
+  version String                    // e.g., "Rev A", "Rev B"
+  content String                    // Full document body (rich text / markdown)
   status  DocStatus @default(DRAFT)
 
-  authorId   String
-  author     User   @relation("CreatedDocs", fields: [authorId], references: [id])
+  // Author — mandatory; the user who created this document
+  authorId String @db.ObjectId
+  author   User   @relation("CreatedDocs", fields: [authorId], references: [id])
 
-  reviewerId String?
-  reviewer   User?  @relation("ReviewedDocs", fields: [reviewerId], references: [id])
+  // Reviewer — optional; set when submitted for review
+  reviewerId String? @db.ObjectId
+  reviewer   User?   @relation("ReviewedDocs", fields: [reviewerId], references: [id])
 
-  approverId String?
-  approver   User?  @relation("ApprovedDocs", fields: [approverId], references: [id])
+  // Approver — optional; set when approved
+  approverId String? @db.ObjectId
+  approver   User?   @relation("ApprovedDocs", fields: [approverId], references: [id])
 
-  effectiveDate DateTime?
+  effectiveDate DateTime? // Date the approved document comes into force
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
 
+// -----------------------------------------------------------------------------
+// Supplier — approved vendor list entry
+// -----------------------------------------------------------------------------
 model Supplier {
-  id                String   @id @default(cuid())
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
   name              String
-  code              String   @unique
-  isApproved        Boolean  @default(false)
-  performanceRating Float    @default(0.0)
+  code              String   @unique  // Internal supplier code, e.g., "SUP-001"
+  isApproved        Boolean  @default(false)   // Must be approved before raising a GRN
+  performanceRating Float    @default(0.0)     // 0–100 score updated after each delivery
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  grns Grn[]
+  grns Grn[] // All goods receipt notes from this supplier
 }
 
+// -----------------------------------------------------------------------------
+// Component — a part or material in the Bill of Materials (BOM)
+// -----------------------------------------------------------------------------
 model Component {
-  id            String   @id @default(cuid())
-  partNumber    String   @unique
-  description   String
-  category      String
-  mslLevel      Int      @default(1)
-  shelfLifeDays Int?
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  partNumber    String   @unique  // Manufacturer or internal part number
+  description   String            // Human-readable description
+  category      String            // e.g., "Resistor", "IC", "Capacitor"
+  mslLevel      Int      @default(1)   // Moisture Sensitivity Level (IPC/JEDEC J-STD-033)
+  shelfLifeDays Int?               // Max storage days; null = no expiry
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  reels    Reel[]
-  grnItems GrnItem[]
+  reels    Reel[]     // Physical reels of this component in stock
+  grnItems GrnItem[]  // Line items on GRNs that include this component
 }
 
-enum ReelStatus {
-  QUARANTINE
-  ACCEPTED
-  REJECTED
-  ISSUED
-  CONSUMED
-  SCRAPPED
-}
-
+// -----------------------------------------------------------------------------
+// Reel — a physical reel/spool of a component held in the store
+// -----------------------------------------------------------------------------
 model Reel {
-  id          String     @id @default(cuid())
-  componentId String
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  componentId String     @db.ObjectId
   component   Component  @relation(fields: [componentId], references: [id])
-  grnId       String
+  grnId       String     @db.ObjectId
   grn         Grn        @relation(fields: [grnId], references: [id])
-  supplierLot String
-  quantity    Int
-  location    String?
+  supplierLot String               // Supplier's lot/batch number for traceability
+  quantity    Int                  // Current quantity remaining on the reel
+  location    String?              // Shelf/bin location, e.g., "SHELF-A1"
   status      ReelStatus @default(QUARANTINE)
-  expiryDate  DateTime?
+  expiryDate  DateTime?            // Calculated from MSL shelf life at time of receipt
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  auditLogs  AuditLog[]
-  ncrRecords NcrRecord[]
+  auditLogs  AuditLog[]   // All movements and status changes for this reel
+  ncrRecords NcrRecord[]  // Non-conformance reports raised against this reel
 }
 
+// -----------------------------------------------------------------------------
+// Grn — Goods Receipt Note; records a physical delivery from a supplier
+// -----------------------------------------------------------------------------
 model Grn {
-  id           String   @id @default(cuid())
-  grnNumber    String   @unique
-  supplierId   String
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  grnNumber    String   @unique  // Sequential number, e.g., "GRN-1092"
+  supplierId   String   @db.ObjectId
   supplier     Supplier @relation(fields: [supplierId], references: [id])
   receivedDate DateTime @default(now())
+  // Status values: PENDING_IQC | IQC_PASSED | IQC_FAILED | CLOSED
   status       String   @default("PENDING_IQC")
 
-  items GrnItem[]
-  reels Reel[]
+  items GrnItem[] // Line items (one per component type in the delivery)
+  reels Reel[]    // Reels created from this GRN
 }
 
+// -----------------------------------------------------------------------------
+// GrnItem — a single line item within a GRN (one component type per line)
+// -----------------------------------------------------------------------------
 model GrnItem {
-  id          String    @id @default(cuid())
-  grnId       String
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  grnId       String    @db.ObjectId
   grn         Grn       @relation(fields: [grnId], references: [id])
-  componentId String
+  componentId String    @db.ObjectId
   component   Component @relation(fields: [componentId], references: [id])
-  declaredQty Int
+  declaredQty Int       // Quantity declared on the supplier's delivery note
 
+  // One-to-one: each GRN line item has at most one IQC inspection record
   iqc IqcInspection?
 }
 
+// -----------------------------------------------------------------------------
+// IqcInspection — Incoming Quality Control inspection result for a GRN item
+// -----------------------------------------------------------------------------
 model IqcInspection {
-  id          String  @id @default(cuid())
-  grnItemId   String  @unique
-  grnItem     GrnItem @relation(fields: [grnItemId], references: [id])
-  inspectorId String
-  inspector   User    @relation(fields: [inspectorId], references: [id])
-  status      String // PASS, FAIL
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  grnItemId   String   @unique @db.ObjectId  // One inspection per GRN line item
+  grnItem     GrnItem  @relation(fields: [grnItemId], references: [id])
+  inspectorId String   @db.ObjectId
+  inspector   User     @relation(fields: [inspectorId], references: [id])
+  // "PASS" or "FAIL" — determines whether reels move from QUARANTINE to ACCEPTED/REJECTED
+  status      String
+  // Flexible JSON for measurement data (dimensions, electrical tests, visual checks, etc.)
   measurements Json?
-  remarks     String?
+  remarks     String?  // Free-text notes from the inspector
   createdAt   DateTime @default(now())
 }
 
+// -----------------------------------------------------------------------------
+// AuditLog — immutable record of every significant action in the system
+// Supports ISO 9001 traceability and internal audit requirements
+// -----------------------------------------------------------------------------
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
   user       User     @relation(fields: [userId], references: [id])
-  action     String // CREATE, UPDATE, DELETE, MOVE
-  entityType String // e.g., REEL, DOCUMENT, GRN
-  entityId   String
-  oldValue   Json?
-  newValue   Json?
+  // Action type: CREATE | UPDATE | DELETE | MOVE | ISSUE | SCRAP
+  action     String
+  // Which model was affected: REEL | DOCUMENT | GRN | SUPPLIER | USER
+  entityType String
+  entityId   String   // The _id of the affected document in its collection
+  oldValue   Json?    // Snapshot of the record before the change
+  newValue   Json?    // Snapshot of the record after the change
   timestamp  DateTime @default(now())
 
-  reelId String?
-  reel   Reel?  @relation(fields: [reelId], references: [id])
+  // Optional direct link to a reel if this log concerns a specific reel movement
+  reelId String? @db.ObjectId
+  reel   Reel?   @relation(fields: [reelId], references: [id])
 }
 
+// -----------------------------------------------------------------------------
+// NcrRecord — Non-Conformance Report raised against a rejected or defective reel
+// Drives root-cause analysis and Corrective/Preventive Action (CAPA) workflow
+// -----------------------------------------------------------------------------
 model NcrRecord {
-  id          String @id @default(cuid())
-  ncrNumber   String @unique
-  reelId      String
-  reel        Reel   @relation(fields: [reelId], references: [id])
-  raisedById  String
-  raisedBy    User   @relation(fields: [raisedById], references: [id])
-  description String
-  rootCause   String?
-  capa        String?
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  ncrNumber   String  @unique  // e.g., "NCR-2026-001"
+  reelId      String  @db.ObjectId
+  reel        Reel    @relation(fields: [reelId], references: [id])
+  raisedById  String  @db.ObjectId
+  raisedBy    User    @relation(fields: [raisedById], references: [id])
+  description String              // What was wrong (defect description)
+  rootCause   String?             // Root cause identified during investigation
+  capa        String?             // Corrective and Preventive Action agreed upon
+  // Status values: OPEN | UNDER_INVESTIGATION | CLOSED
   status      String   @default("OPEN")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
