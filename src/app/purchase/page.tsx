@@ -150,7 +150,26 @@ export default function PurchasePage() {
     setPos(updatedPos);
     localStorage.setItem('QMS_POS', JSON.stringify(updatedPos));
 
-    alert(`PO ${uploadData.poNumber} scanned successfully! The extracted details are now synced for Store GRN verification.`);
+    // Automated Requisition Fulfillment Logic
+    // If PO contains items that match pending shortages, remove them from requisitions
+    const currentReqs = JSON.parse(localStorage.getItem('QMS_PURCHASE_REQUISITIONS') || '[]');
+    const remainingReqs = currentReqs.filter((req: any) => {
+        // Find if this requisition part is in the new PO
+        const fulfilledByPo = newItems.some((pi: any) => 
+            (pi.partNumber && pi.partNumber.toLowerCase() === req.partNumber.toLowerCase()) ||
+            (pi.component && pi.component.toLowerCase().includes(req.partNumber.toLowerCase()))
+        );
+        return !fulfilledByPo; // Keep if NOT fulfilled
+    });
+
+    if (remainingReqs.length < currentReqs.length) {
+        localStorage.setItem('QMS_PURCHASE_REQUISITIONS', JSON.stringify(remainingReqs));
+        setRequisitions(remainingReqs);
+        alert(`PO ${uploadData.poNumber} verified. ${currentReqs.length - remainingReqs.length} BOM shortages have been automatically fulfilled.`);
+    } else {
+        alert(`PO ${uploadData.poNumber} scanned successfully! The extracted details are now synced for Store GRN verification.`);
+    }
+
     setShowModal(false);
     setHasPushedQueue(false);
     setUploadData({ poNumber: '', supplier: '', eta: '', pdfFile: null, isParsing: false, extractedItems: [] });
@@ -183,7 +202,7 @@ export default function PurchasePage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
         <div className="glass-card" style={{ padding: '1.25rem', border: '1px solid var(--accent-primary)' }}>
           <h3 style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Active POs</h3>
           <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--accent-primary)' }}>12</div>
@@ -200,35 +219,51 @@ export default function PurchasePage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) 2.5fr', gap: '1.5rem', alignItems: 'start' }}>
         
-        {/* Pending PRs Column */}
+        {/* Pending Shortages Column (Grouped by Project) */}
         <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', height: 'fit-content' }}>
           <h2 style={{ fontSize: '1rem', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--warning)' }}>
             <AlertTriangle size={18} />
-            Pending PRs from MRP ({requisitions.length})
+            BOM Shortages ({requisitions.length})
           </h2>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Production material shortages requiring PO issuance.</p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Consolidated requirements from Engineering</p>
 
           {requisitions.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
               <CheckCircle size={32} color="var(--success)" style={{ marginBottom: '0.5rem', opacity: 0.7 }} />
-              <p style={{ fontSize: '0.9rem' }}>No pending requisitions</p>
+              <p style={{ fontSize: '0.9rem' }}>All BOMs Fully Stocked</p>
             </div>
           ) : (
-            requisitions.map((req, i) => (
-              <div key={i} className="glass-card" style={{ padding: '1rem', borderLeft: '3px solid var(--warning)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '0.5rem' }}>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{req.partNumber}</span>
-                  <span style={{ fontSize: '0.75rem', color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>Need: {req.quantityNeeded}</span>
+            // Grouping logic inside the render
+            Object.entries(
+              requisitions.reduce((acc: any, curr: any) => {
+                const group = curr.workOrderRef || 'Unassigned';
+                if (!acc[group]) acc[group] = [];
+                acc[group].push(curr);
+                return acc;
+              }, {})
+            ).map(([project, items]: [string, any], groupIdx) => (
+              <div key={project} className="glass-card" style={{ padding: '1rem', borderLeft: '3px solid var(--accent-primary)', marginBottom: '0.5rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent-primary)', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>📦 {project}</span>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>{items.length} Items</span>
                 </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>{req.description}</div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Work Order: {req.workOrderRef}</div>
-                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {items.map((req: any, i: number) => (
+                    <div key={i} style={{ paddingLeft: '0.5rem', borderLeft: '1px solid var(--border-subtle)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem', gap: '0.5rem' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.85rem' }}>{req.partNumber}</span>
+                        <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700 }}>{req.quantityNeeded}</span>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{req.description}</div>
+                    </div>
+                  ))}
+                </div>
                 <button 
                   className="btn btn-secondary" 
-                  style={{ width: '100%', marginTop: '1rem', padding: '0.4rem', fontSize: '0.8rem' }}
-                  onClick={() => alert(`Creating targeted PO for ${req.partNumber} (Qty: ${req.quantityNeeded})`)}
+                  style={{ width: '100%', marginTop: '1rem', padding: '0.4rem', fontSize: '0.75rem', borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }}
+                  onClick={() => alert(`Starting PO generation for project ${project}`)}
                 >
-                  <FileText size={14} /> Fulfill via New PO
+                  <Plus size={14} /> Fulfill Project Requirements
                 </button>
               </div>
             ))
@@ -369,9 +404,28 @@ export default function PurchasePage() {
                   </div>
                   <div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Scanned Items</div>
-                    <div style={{ fontWeight: 600 }}>Auto-Linked to GRN</div>
+                    <div style={{ fontWeight: 600 }}>{uploadData.extractedItems.length} Identified</div>
                   </div>
                 </div>
+
+                {/* Auto-Match Shortages Display */}
+                {uploadData.extractedItems.some((item: any) => 
+                  requisitions.some(req => (item.partNumber && item.partNumber === req.partNumber) || (item.component && item.component.includes(req.partNumber)))
+                ) && (
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(59,130,246,0.1)', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--accent-primary)' }}>
+                    <h5 style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <CheckCircle size={14} /> Smart Match: Pending Shortages Detected
+                    </h5>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Items in this PO match requirements for: 
+                      <strong style={{ marginLeft: '0.4rem', color: 'var(--text-primary)' }}>
+                        {Array.from(new Set(requisitions.filter((req: any) => 
+                          uploadData.extractedItems.some((item: any) => (item.partNumber && item.partNumber === req.partNumber) || (item.component && item.component.includes(req.partNumber)))
+                        ).map((r: any) => r.workOrderRef))).join(', ')}
+                      </strong>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

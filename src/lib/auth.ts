@@ -19,10 +19,10 @@ export const authOptions: NextAuthOptions = {
         // Dev fallback — works without a database connection
         if (process.env.NODE_ENV !== 'production') {
           const DEV_USERS: Record<string, { name: string; role: Role; password: string }> = {
-            'admin@nexusqms.com':    { name: 'Admin User',       role: 'ADMIN',      password: 'Admin@123' },
-            'quality@nexusqms.com':  { name: 'Quality Inspector', role: 'QUALITY',    password: 'Quality@123' },
-            'store@nexusqms.com':    { name: 'Store Manager',     role: 'STORE',      password: 'Store@123' },
-            'purchase@nexusqms.com': { name: 'Purchase Team',     role: 'PURCHASE',   password: 'Purchase@123' },
+            'admin@prism.com':    { name: 'Admin User',       role: 'ADMIN',      password: 'Admin@123' },
+            'quality@prism.com':  { name: 'Quality Inspector', role: 'QUALITY',    password: 'Quality@123' },
+            'store@prism.com':    { name: 'Store Manager',     role: 'STORE',      password: 'Store@123' },
+            'purchase@prism.com': { name: 'Purchase Team',     role: 'PURCHASE',   password: 'Purchase@123' },
           };
           const dev = DEV_USERS[credentials.email];
           if (dev && credentials.password === dev.password) {

@@ -31,11 +31,11 @@ interface UserRecord {
 }
 
 const INITIAL_USERS: UserRecord[] = [
-  { id: '1', name: 'Admin User', email: 'admin@nexusqms.com', role: 'ADMIN', active: true, lastLogin: 'Today, 09:14' },
-  { id: '2', name: 'Quality Inspector', email: 'quality@nexusqms.com', role: 'QUALITY', active: true, lastLogin: 'Today, 08:55' },
-  { id: '3', name: 'Store Manager', email: 'store@nexusqms.com', role: 'STORE', active: true, lastLogin: 'Today, 08:30' },
-  { id: '4', name: 'Purchase Team', email: 'purchase@nexusqms.com', role: 'PURCHASE', active: true, lastLogin: 'Yesterday' },
-  { id: '5', name: 'Production Team', email: 'production@nexusqms.com', role: 'PRODUCTION', active: false, lastLogin: '3 days ago' },
+  { id: '1', name: 'Admin User', email: 'admin@prism.com', role: 'ADMIN', active: true, lastLogin: 'Today, 09:14' },
+  { id: '2', name: 'Quality Inspector', email: 'quality@prism.com', role: 'QUALITY', active: true, lastLogin: 'Today, 08:55' },
+  { id: '3', name: 'Store Manager', email: 'store@prism.com', role: 'STORE', active: true, lastLogin: 'Today, 08:30' },
+  { id: '4', name: 'Purchase Team', email: 'purchase@prism.com', role: 'PURCHASE', active: true, lastLogin: 'Yesterday' },
+  { id: '5', name: 'Production Team', email: 'production@prism.com', role: 'PRODUCTION', active: false, lastLogin: '3 days ago' },
 ];
 
 export default function UsersRolesPage() {
@@ -227,7 +227,7 @@ export default function UsersRolesPage() {
             </div>
             <div className="input-group">
               <label className="input-label">Email Address</label>
-              <input className="input-field" type="email" placeholder="email@nexusqms.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              <input className="input-field" type="email" placeholder="email@prism.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </div>
             <div className="input-group">
               <label className="input-label">Role</label>

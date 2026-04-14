@@ -136,6 +136,8 @@ model Component {
 
   reels    Reel[]     // Physical reels of this component in stock
   grnItems GrnItem[]  // Line items on GRNs that include this component
+  bomItems BomItem[]  // Used as a primary item in these BOMs
+  bomAlternates BomAlternate[] // Used as an alternate item in these BOMs
 }
 
 // -----------------------------------------------------------------------------
@@ -248,3 +250,51 @@ model NcrRecord {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// -----------------------------------------------------------------------------
+// MasterBom — Represents the Bill of Materials for a top-level product
+// Tracks version and status; audit logs provide ISO 9001 change traceability.
+// -----------------------------------------------------------------------------
+model MasterBom {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  productName String
+  productCode String     @unique  // e.g., "PCBA-SMV2"
+  version     String     @default("Rev A") // Revision string
+  status      String     @default("DRAFT") // DRAFT, ACTIVE, OBSOLETE
+  details     String?    // Optional description or instructions
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  items       BomItem[]  // Line items specifying components and quantities
+}
+
+// -----------------------------------------------------------------------------
+// BomItem — A specific component required inside a Master BOM
+// -----------------------------------------------------------------------------
+model BomItem {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  masterBomId String   @db.ObjectId
+  masterBom   MasterBom @relation(fields: [masterBomId], references: [id])
+  componentId String   @db.ObjectId
+  component   Component @relation(fields: [componentId], references: [id])
+  quantity    Float    // Quantity required per 1 unit of final product
+  reference   String?  // PCB designator, e.g., "R1, R2, C1"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  alternates  BomAlternate[] // Alternate parts that can be subsituted
+}
+
+// -----------------------------------------------------------------------------
+// BomAlternate — Allowed alternative components for a specific BomItem
+// -----------------------------------------------------------------------------
+model BomAlternate {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  bomItemId   String   @db.ObjectId
+  bomItem     BomItem   @relation(fields: [bomItemId], references: [id])
+  componentId String   @db.ObjectId
+  component   Component @relation(fields: [componentId], references: [id])
+  isApproved  Boolean   @default(true) // Needs QA approval ideally
+  createdAt   DateTime  @default(now())
+}
+

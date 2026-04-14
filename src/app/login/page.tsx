@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
+import PrismLogo from '@/components/PrismLogo';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +12,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [brandName, setBrandName] = useState('EF Prism');
+  const [brandLogo, setBrandLogo] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedName = localStorage.getItem('QMS_APP_NAME');
+    const savedLogo = localStorage.getItem('QMS_APP_LOGO');
+    if (savedName) setBrandName(savedName);
+    if (savedLogo) setBrandLogo(savedLogo);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,12 +56,16 @@ export default function LoginPage() {
       <div style={{ width: '100%', maxWidth: '400px' }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '56px', height: '56px', borderRadius: '14px', background: 'linear-gradient(135deg, var(--accent-primary), #7c3aed)', marginBottom: '1rem' }}>
-            <ShieldCheck size={28} color="white" />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+            {brandLogo ? (
+              <img src={brandLogo} alt="Logo" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
+            ) : (
+              <PrismLogo size={38} />
+            )}
+            <h1 className="text-gradient" style={{ fontSize: '2rem', fontWeight: 700, margin: 0 }}>
+              {brandName}
+            </h1>
           </div>
-          <h1 className="text-gradient" style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-            Nexus QMS
-          </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
             ISO 9001:2015 Compliant System
           </p>
@@ -77,7 +92,7 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 className="input-field"
-                placeholder="you@nexusqms.com"
+                placeholder="you@prism.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

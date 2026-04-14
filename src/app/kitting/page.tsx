@@ -73,6 +73,7 @@ export default function KittingPage() {
   const [rawCsvData, setRawCsvData] = useState<string[][]>([]);
   const [mapping, setMapping] = useState({
     part: '',
+    internalPart: '',
     desc: '',
     required: '',
     assembly: ''
@@ -137,6 +138,7 @@ export default function KittingPage() {
       
       setMapping({
         part: headers.find(h => /part|number|id|pn/i.test(h)) || '',
+        internalPart: headers.find(h => /internal|ipn/i.test(h)) || '',
         desc: headers.find(h => /desc|name|type/i.test(h)) || '',
         required: headers.find(h => /qty|quantity|req|count/i.test(h)) || '',
         assembly: headers.find(h => /loc|assembly|route/i.test(h)) || ''
@@ -152,19 +154,21 @@ export default function KittingPage() {
     }
 
     const partIdx = csvHeaders.indexOf(mapping.part);
+    const internalIdx = csvHeaders.indexOf(mapping.internalPart);
     const descIdx = csvHeaders.indexOf(mapping.desc);
     const qtyIdx = csvHeaders.indexOf(mapping.required);
     const assemblyIdx = csvHeaders.indexOf(mapping.assembly);
 
     const parsedBom = rawCsvData.map(row => {
       const part = row[partIdx];
+      const internalPart = internalIdx >= 0 ? row[internalIdx] : '';
       const desc = row[descIdx];
       const required = parseInt(row[qtyIdx] || '0', 10);
       const rawAssembly = assemblyIdx >= 0 ? row[assemblyIdx] : 'EMS';
       const assemblyType = rawAssembly.toLowerCase().includes('in') ? 'In-House' : 'EMS';
       
       if (part && desc) {
-        return { part, desc, required: required * (newKitData.qty || 1), assemblyType };
+        return { part, internalPart, desc, required: required * (newKitData.qty || 1), assemblyType };
       }
       return null;
     }).filter(Boolean);
@@ -184,7 +188,7 @@ export default function KittingPage() {
     const newBomTemplate = {
       productName: newKitData.product,
       components: newKitData.bom.map(b => ({
-         part: b.part, desc: b.desc, requiredPerUnit: Math.ceil(b.required / builtRatio), assemblyType: b.assemblyType || 'EMS'
+         part: b.part, internalPart: b.internalPart, desc: b.desc, requiredPerUnit: Math.ceil(b.required / builtRatio), assemblyType: b.assemblyType || 'EMS'
       }))
     };
     
@@ -210,7 +214,7 @@ export default function KittingPage() {
         ...p,
         product: template.productName,
         bom: template.components.map((c: any) => ({
-          part: c.part, desc: c.desc, required: c.requiredPerUnit * (p.qty || 1), picked: 0, shortage: 0, assemblyType: c.assemblyType || 'EMS'
+          part: c.part, internalPart: c.internalPart, desc: c.desc, required: c.requiredPerUnit * (p.qty || 1), picked: 0, shortage: 0, assemblyType: c.assemblyType || 'EMS'
         }))
       }));
       setHasCalculatedShortage(false);
@@ -263,7 +267,7 @@ export default function KittingPage() {
       dispatchDate: new Date().toISOString().split('T')[0],
       expectedReturn: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
       bom: newKitData.bom.map(b => ({
-        part: b.part, desc: b.desc, required: b.required, picked: b.picked || 0, shortage: b.shortage || 0, assemblyType: b.assemblyType || 'EMS'
+        part: b.part, internalPart: b.internalPart, desc: b.desc, required: b.required, picked: b.picked || 0, shortage: b.shortage || 0, assemblyType: b.assemblyType || 'EMS'
       }))
     };
     
@@ -342,7 +346,7 @@ export default function KittingPage() {
   const addManualComponent = () => {
     setNewKitData(p => ({
       ...p,
-      bom: [...p.bom, { part: 'NEW-PART', desc: 'Manual Entry', required: 0, assemblyType: 'EMS' }]
+      bom: [...p.bom, { part: 'NEW-PART', internalPart: '', desc: 'Manual Entry', required: 0, assemblyType: 'EMS' }]
     }));
     setHasCalculatedShortage(false);
   };
@@ -597,8 +601,9 @@ export default function KittingPage() {
                 {isMapping ? (
                   <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: 'var(--radius-md)' }}>
                     <h3 style={{ marginBottom: '1rem' }}>Map CSV Columns</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
                       <select className="input-field" value={mapping.part} onChange={e => setMapping(m => ({...m, part: e.target.value}))}><option value="">Part No</option>{csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}</select>
+                      <select className="input-field" value={mapping.internalPart} onChange={e => setMapping(m => ({...m, internalPart: e.target.value}))}><option value="">Int. Part</option>{csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}</select>
                       <select className="input-field" value={mapping.desc} onChange={e => setMapping(m => ({...m, desc: e.target.value}))}><option value="">Desc</option>{csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}</select>
                       <select className="input-field" value={mapping.required} onChange={e => setMapping(m => ({...m, required: e.target.value}))}><option value="">Qty</option>{csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}</select>
                       <select className="input-field" value={mapping.assembly} onChange={e => setMapping(m => ({...m, assembly: e.target.value}))}><option value="">Assembly</option>{csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}</select>
@@ -625,11 +630,12 @@ export default function KittingPage() {
                 </div>
                 <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                   <table className="data-table">
-                    <thead><tr><th>Part</th><th>Desc</th><th>Req</th><th>Route</th></tr></thead>
+                    <thead><tr><th>Part</th><th>Int. Part No</th><th>Desc</th><th>Req</th><th>Route</th></tr></thead>
                     <tbody>
                       {newKitData.bom.map((b: any, index: number) => (
                         <tr key={index}>
                           <td><input className="input-field" value={b.part} onChange={e => updateBomRow(index, 'part', e.target.value)} /></td>
+                          <td><input className="input-field" value={b.internalPart || ''} onChange={e => updateBomRow(index, 'internalPart', e.target.value)} /></td>
                           <td><input className="input-field" value={b.desc} onChange={e => updateBomRow(index, 'desc', e.target.value)} /></td>
                           <td><input className="input-field" type="number" value={b.required} onChange={e => updateBomRow(index, 'required', parseInt(e.target.value) || 0)} /></td>
                           <td>
