@@ -112,6 +112,7 @@ export default function Sidebar() {
           <div>
             <h1 className="text-gradient" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>
               {brandLogo ? (
+                 /* eslint-disable-next-line @next/next/no-img-element */
                  <img src={brandLogo} alt="Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
               ) : (
                  <PrismLogo size={28} />
@@ -144,7 +145,14 @@ export default function Sidebar() {
               </div>
             )}
             {section.items.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+              // Exact match or matches as a category (e.g. /purchase/123 matches /purchase)
+              // but we avoid double-highlighting if a more specific sibling exists
+              const isExact = pathname === item.href;
+              const isPrefix = item.href !== '/' && pathname.startsWith(item.href + '/');
+              
+              // Only highlight prefix if no other menu item is an exact match for the current path
+              const someOtherItemIsExact = MENU_SECTIONS.some(s => s.items.some(i => i.href === pathname && i.href !== item.href));
+              const isActive = isExact || (isPrefix && !someOtherItemIsExact);
               return (
                 <Link
                   key={item.href}
@@ -186,7 +194,10 @@ export default function Sidebar() {
           {!isCollapsed && <ThemeToggle />}
           {session && (
             <button
-              onClick={() => signOut({ callbackUrl: '/login' })}
+              onClick={async () => {
+                await signOut({ redirect: false });
+                window.location.href = '/login';
+              }}
               title="Sign out"
               style={{
                 background: 'none',

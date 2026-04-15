@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
@@ -58,6 +58,7 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
             {brandLogo ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img src={brandLogo} alt="Logo" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
             ) : (
               <PrismLogo size={38} />

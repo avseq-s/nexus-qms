@@ -690,6 +690,7 @@ export default function InventoryPage() {
 
                       {event.imageRef && (
                         <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'var(--bg-primary)', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'inline-block' }}>
+                           {/* eslint-disable-next-line @next/next/no-img-element */}
                            <img src={event.imageRef} alt="Verification" style={{ maxHeight: '120px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }} />
                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', textAlign: 'center' }}>GRN Visual Attachment</div>
                         </div>

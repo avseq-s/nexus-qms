@@ -89,6 +89,7 @@ export default function SystemSettingsPage() {
                   overflow: 'hidden'
                  }}>
                   {appLogo ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={appLogo} alt="App Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   ) : (
                     <ImageIcon size={32} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
