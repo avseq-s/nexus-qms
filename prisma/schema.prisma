@@ -113,8 +113,17 @@ model Supplier {
   id                String   @id @default(auto()) @map("_id") @db.ObjectId
   name              String
   code              String   @unique  // Internal supplier code, e.g., "SUP-001"
-  isApproved        Boolean  @default(false)   // Must be approved before raising a GRN
-  performanceRating Float    @default(0.0)     // 0–100 score updated after each delivery
+  // Approval gate — must be true before any GRN can reference this supplier
+  isApproved        Boolean  @default(false)
+  // 0–100 score; updated after each delivery (PASS = +5, FAIL = −10, capped)
+  performanceRating Float    @default(0.0)
+  // Contact details surfaced by the UI on the supplier register page
+  contact           String?  // Primary contact person, e.g., "Rahul Verma"
+  email             String?  // Contact email
+  phone             String?  // Phone (optional in UI)
+  gstin             String?  // Tax/GSTIN identifier
+  // ISO 9001 certification status — drives the UI's "Approved vs Probation" label
+  isIsoCertified    Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

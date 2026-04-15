@@ -1,6 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/AppShell';
 import SessionProvider from '@/components/SessionProvider';
 
 export const metadata: Metadata = {
@@ -31,12 +31,9 @@ export default function RootLayout({
       </head>
       <body>
         <SessionProvider>
-          <div className="app-container">
-            <Sidebar />
-            <main className="main-content">
-              {children}
-            </main>
-          </div>
+          <AppShell>
+            {children}
+          </AppShell>
         </SessionProvider>
       </body>
     </html>

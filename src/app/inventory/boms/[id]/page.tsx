@@ -109,16 +109,23 @@ export default function BomDetailPage({ params }: { params: { id: string } }) {
   const [workflowRules, setWorkflowRules] = useState<any[]>(DEFAULT_WORKFLOW_RULES);
 
   React.useEffect(() => {
-    const savedBoms = JSON.parse(localStorage.getItem('QMS_BOMS') || '[]');
-    const found = savedBoms.find((b: any) => b.id === params.id);
-    if (found) {
-      setBom(found);
-      setItems(found.items.map((it: any) => ({
-        ...it,
-        qty: it.quantityPerAssy,
-        ref: it.refDesignators,
-        mockStock: Math.floor(Math.random() * 1000)
-      })));
+    try {
+      const savedBomsRaw = localStorage.getItem('QMS_BOMS');
+      const savedBoms = savedBomsRaw ? JSON.parse(savedBomsRaw) : [];
+      if (Array.isArray(savedBoms)) {
+        const found = savedBoms.find((b: any) => b.id === params.id);
+        if (found) {
+          setBom(found);
+          setItems(found.items?.map((it: any) => ({
+            ...it,
+            qty: it.quantityPerAssy,
+            ref: it.refDesignators,
+            mockStock: Math.floor(Math.random() * 1000)
+          })) || []);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading BOM detail", err);
     }
 
     const savedRules = localStorage.getItem('QMS_WORKFLOW_RULES');
